@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Ensure Google Maps autocomplete dropdown renders above everything */
+.pac-container {
+  z-index: 9999 !important;
+}
