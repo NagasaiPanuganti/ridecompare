@@ -28,6 +28,9 @@ def test_uber_redirect_url_format():
     assert "-122.4194" in url
     assert "37.3382" in url
     assert "-121.8863" in url
+    # Verify nickname/formatted_address params are present (required for pin display)
+    assert "nickname" in url
+    assert "formatted_address" in url
 
 
 def test_lyft_redirect_url_format():
@@ -44,6 +47,7 @@ def test_lyft_redirect_url_format():
     assert url.startswith("https://lyft.com/ride")
     assert "37.7749" in url
     assert "-122.4194" in url
+    assert "id=lyft" in url
 
 
 def test_unknown_provider_keeps_empty_url():

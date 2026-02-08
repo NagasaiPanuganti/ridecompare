@@ -9,14 +9,19 @@ def _build_uber_url(request: CompareRequest) -> str:
         "action": "setPickup",
         "pickup[latitude]": request.pickup_lat,
         "pickup[longitude]": request.pickup_lng,
+        "pickup[nickname]": "Pickup",
+        "pickup[formatted_address]": f"{request.pickup_lat}, {request.pickup_lng}",
         "dropoff[latitude]": request.drop_lat,
         "dropoff[longitude]": request.drop_lng,
+        "dropoff[nickname]": "Destination",
+        "dropoff[formatted_address]": f"{request.drop_lat}, {request.drop_lng}",
     })
     return f"https://m.uber.com/ul/?{params}"
 
 
 def _build_lyft_url(request: CompareRequest) -> str:
     params = urlencode({
+        "id": "lyft",
         "pickup[latitude]": request.pickup_lat,
         "pickup[longitude]": request.pickup_lng,
         "destination[latitude]": request.drop_lat,
