@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LocationCoords } from "@/types";
-import { loadPlacesLibrary } from "@/lib/google-maps";
 
 interface LocationInputProps {
   label: string;
@@ -10,49 +9,88 @@ interface LocationInputProps {
   placeholder?: string;
 }
 
+interface NominatimResult {
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
 export default function LocationInput({
   label,
   onSelect,
   placeholder = "Enter a location",
 }: LocationInputProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [isSelected, setIsSelected] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
+  // Close dropdown when clicking outside
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || !inputRef.current) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    loadPlacesLibrary().then(() => {
-      if (!inputRef.current || autocompleteRef.current) return;
+  const searchLocations = useCallback(async (query: string) => {
+    if (query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
 
-      const autocomplete = new google.maps.places.Autocomplete(
-        inputRef.current,
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`,
         {
-          types: ["geocode", "establishment"],
-          fields: ["geometry", "formatted_address", "name"],
+          headers: {
+            "Accept-Language": "en",
+          },
         }
       );
+      const data: NominatimResult[] = await response.json();
+      setSuggestions(data);
+      setShowDropdown(data.length > 0);
+    } catch {
+      setSuggestions([]);
+    }
+  }, []);
 
-      autocomplete.addListener("place_changed", () => {
-        const place = autocomplete.getPlace();
-        if (place.geometry?.location) {
-          const coords: LocationCoords = {
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-            address: place.formatted_address || place.name || "",
-          };
-          setValue(coords.address);
-          onSelect(coords);
-        }
-      });
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setValue(newValue);
+    setIsSelected(false);
 
-      autocompleteRef.current = autocomplete;
-    });
-  }, [onSelect]);
+    // Debounce API calls (300ms)
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      searchLocations(newValue);
+    }, 300);
+  };
+
+  const handleSelect = (result: NominatimResult) => {
+    const coords: LocationCoords = {
+      lat: parseFloat(result.lat),
+      lng: parseFloat(result.lon),
+      address: result.display_name,
+    };
+    setValue(result.display_name);
+    setIsSelected(true);
+    setSuggestions([]);
+    setShowDropdown(false);
+    onSelect(coords);
+  };
 
   return (
-    <div className="w-full">
+    <div className="w-full relative" ref={wrapperRef}>
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label}
       </label>
@@ -79,14 +117,48 @@ export default function LocationInput({
           </svg>
         </div>
         <input
-          ref={inputRef}
           type="text"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={handleInputChange}
+          onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
           placeholder={placeholder}
-          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 bg-white"
+          className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 bg-white ${
+            isSelected ? "border-green-400" : "border-gray-300"
+          }`}
         />
+        {isSelected && (
+          <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+            <svg
+              className="w-5 h-5 text-green-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+        )}
       </div>
+
+      {/* Autocomplete dropdown */}
+      {showDropdown && suggestions.length > 0 && (
+        <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {suggestions.map((result, index) => (
+            <li
+              key={`${result.lat}-${result.lon}-${index}`}
+              onClick={() => handleSelect(result)}
+              className="px-4 py-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-b-0"
+            >
+              {result.display_name}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
